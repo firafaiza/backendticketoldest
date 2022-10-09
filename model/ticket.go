@@ -3,8 +3,6 @@ package model
 import (
 	"encoding/json"
 	"time"
-
-
 )
 
 type Ticket struct {
@@ -15,19 +13,16 @@ type Ticket struct {
 	TicketMessage    string        `gorm:"not null; type:varchar(1000)" json:"ticketMessage"`
 	PriorityId       int           `gorm:"not null" json:"priorityId"`
 	TicketAttachment string        `gorm:"type:varchar(1000)" json:"ticketAttachment"`
-	PicId            int           `gorm:"not null" json:"picId"`
-	StatusId         int           `gorm:"not null" json:"statusId"`
+	PicId            int           `json:"picId"`
+	StatusId         int           `json:"statusId"`
+	SolvingDuration  int           `json:"solvingDuration"`
 	CreatedAt        time.Time     `gorm:"default:CURRENT_TIMESTAMP" json:"ticketDate"`
 	UpdatedAt        time.Time     `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
 	IsActive         bool          `gorm:"type:boolean; column:is_active default: true" json:"isActive"`
-	Priority         Priority      `gorm:"foreignKey:PriorityId; references:Id"`
-	Status           Status        `gorm:"foreignKey:StatusId; references:Id"`
-	Pic              Pic           `gorm:"foreignKey:PicId; references:Id"`
-	PicDepartment    PicDepartment `gorm:"foreignKey:DepartmentId; refernces:Id"`
-}
-
-type JsonTicket struct {
-	ID string `json:"id"`
+	Priority         *Priority      `gorm:"foreignKey:PriorityId; references:Id" json:",omitempty"`
+	Status           *Status        `gorm:"foreignKey:StatusId; references:Id" json:",omitempty"`
+	Pic              *Pic           `gorm:"foreignKey:PicId; references:Id" json:",omitempty"`
+	PicDepartment    *PicDepartment `gorm:"foreignKey:DepartmentId; refernces:Id" json:",omitempty"`
 }
 
 func (Ticket) TableName() string {

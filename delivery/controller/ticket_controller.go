@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"net/http"
 	"strconv"
@@ -24,7 +25,56 @@ type TicketController struct {
 
 func (t *TicketController) createTicket(c *gin.Context) {
 	var newTicket model.Ticket
-	err := t.ParseRequestBody(c, &newTicket)
+	csId := c.PostForm("csId")
+	ticketSubject := c.PostForm("ticketSubject")
+	departmentId := c.PostForm("departmentId")
+	ticketMessage := c.PostForm("ticketMessage")
+	priorityId := c.PostForm("priorityId")
+	picId := c.PostForm("picId")
+
+	convDepartmentId, err := strconv.Atoi(departmentId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   err,
+			"message": "Failed converting department id",
+		})
+	}
+	convPriorityId, err := strconv.Atoi(priorityId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   err,
+			"message": "Failed converting priority id",
+		})
+	}
+	convPicId, err := strconv.Atoi(picId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   err,
+			"message": "Failed converting pic id",
+		})
+	}
+
+	// ini buat gagal
+	// kalo file uploadnya perlu pake form
+	// sedangkan kalo userRole, dia harus dari json
+	// var userRole model.UserRole
+	// err = t.ParseRequestBody(c, &userRole)
+	// if err != nil {
+	// 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+	// 		"status":  "FAILED",
+	// 		"message": err,
+	// 	})
+	// 	return
+	// }
+
+	newTicket.CsId = csId
+	newTicket.TicketSubject = ticketSubject
+	newTicket.DepartmentId = convDepartmentId
+	newTicket.TicketMessage = ticketMessage
+	newTicket.PriorityId = convPriorityId
+	newTicket.PicId = convPicId
+
+	ticket, err := t.ucTicket.CreateTicket(&newTicket)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "FAILED",
@@ -32,30 +82,54 @@ func (t *TicketController) createTicket(c *gin.Context) {
 		})
 		return
 	}
-	err = t.ucTicket.CreateTicket(&newTicket)
+
+	file, err := c.FormFile("file")
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  "FAILED",
-			"message": err,
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   err,
+			"message": "Failed to upload",
 		})
 		return
 	}
+
+	extension := filepath.Ext(file.Filename)
+
+	if err := c.SaveUploadedFile(file, "attachment/"+ticket.TicketId+"."+extension); err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"message": "Unable to save the file",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "SUCCESS",
 		"message": newTicket,
 	})
 }
 
-func (t *TicketController) ListTicketByUserId(c *gin.Context) {
-	var userRole model.UserRole
-	err := t.ParseRequestBody(c, &userRole)
+func (t *TicketController) ListAllTicket(c *gin.Context) {
+	result, err := t.ucTicket.ListAllTicket()
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status":  "FAILED",
-			"message": err,
+			"message": "Error when retrieving list ticket",
 		})
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "SUCCESS",
+		"message": result,
+	})
+}
+
+func (t *TicketController) ListTicketByUserId(c *gin.Context) {
+	param := c.Request.URL.Query()
+	userId := param["uid"][0]
+	roleId := param["rid"][0]
+	intRoleId, _ := strconv.Atoi(roleId)
+	var userRole model.UserRole
+	userRole.UserId = userId
+	userRole.RoleId = intRoleId
 
 	print, err := t.ucTicket.ListByUser(&userRole)
 	if err != nil {
@@ -88,98 +162,6 @@ func (t *TicketController) ListTicketByDepartmentId(c *gin.Context) {
 	})
 }
 
-// func (t *TicketController) listTicketByDate(c *gin.Context) {
-// 	userId := ""
-// 	orderBy := c.Param("orderBy")
-
-// 	print, err := t.ucTicket.ListByDate(userId, orderBy)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
-// 		return
-// 	}
-// 	t.Success(c, print)
-// }
-
-// func (t *TicketController) filterTicketByDate(c *gin.Context) {
-// 	userId := ""
-// 	var filterDate struct {
-// 		// startDate string
-// 		startTime string
-// 		// endDate string
-// 		endTime string
-// 	}
-
-// 	if err := c.BindJSON(&filterDate); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{
-// 			"status":  "BAD REQUEST",
-// 			"message": err.Error(),
-// 		})
-// 	}
-
-// 	// startTime := c.Param("startTime") + "2006-01-02 00:00:00"
-
-// 	startDate, err := time.Parse("2006-01-02 15:04:05", filterDate.startTime)
-// 	if err != nil {
-// 		t.Failed(c, err)
-// 		return
-// 	}
-
-// 	// endTime := c.Param("endTime") + "2006-01-02 00:00:00"
-
-// 	endDate, err := time.Parse("2006-01-02 15:04:05", filterDate.endTime)
-// 	if err != nil {
-// 		t.Failed(c, err)
-// 		return
-// 	}
-
-// 	print, err := t.ucTicket.FilterByDate(userId, startDate, endDate)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
-// 		return
-// 	}
-// 	t.Success(c, print)
-// }
-
-// func (t *TicketController) listTicketByPriority(c *gin.Context) {
-// 	// nanti diambil dari jwt aja bisa
-// 	// userId := ""
-// 	userId := c.Param("userId")
-// 	print, err := t.ucTicket.ListByUser(userId)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
-// 		return
-// 	}
-// 	t.Success(c, print)
-// }
-
-// func (t *TicketController) listTicketByCategory(c *gin.Context) {
-// 	// nanti diambil dari jwt aja bisa
-// 	// userId := ""
-// 	userId := c.Param("userId")
-// 	print, err := t.ucTicket.ListByUser(userId)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
-// 		return
-// 	}
-// 	t.Success(c, print)
-// }
-
 func (t *TicketController) getTicketById(c *gin.Context) {
 	ticketId := c.Param("id")
 	print, err := t.ucTicket.GetById(ticketId)
@@ -204,46 +186,145 @@ func (t *TicketController) getTicketById(c *gin.Context) {
 	})
 }
 
-// func (t *TicketController) getTotalOpenTicket(c *gin.Context) {
-// 	userId := ""
-// 	print, err := t.ucTicket.GetTotalOpen(userId)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
-// 		return
-// 	}
-// 	t.Success(c, print)
-// }
+func (t *TicketController) getTicketSummary(c *gin.Context) {
+	statusId := c.Param("status")
+	convStatusId, err := strconv.Atoi(statusId)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "FAILED",
+			"message": "Error converting status id",
+		})
+		return
+	}
 
-// func (t *TicketController) getTotalCloseTicket(c *gin.Context) {
-// 	userId := ""
-// 	print, err := t.ucTicket.GetTotalClose(userId)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
-// 		return
-// 	}
-// 	t.Success(c, print)
-// }
+	var userRole model.UserRole
+	err = t.ParseRequestBody(c, &userRole)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "FAILED",
+			"message": err,
+		})
+		return
+	}
 
-// func (t *TicketController) getTotalOnProgressTicket(c *gin.Context) {
-// 	userId := ""
-// 	print, err := t.ucTicket.GetTotalProgress(userId)
+	print, err := t.ucTicket.GetSummaryTicket(convStatusId, &userRole)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"status":  "FAILED",
+				"message": "Error ticket not found",
+			})
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "FAILED",
+			"message": err,
+		})
+		return
+
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "SUCCESS",
+		"message": print,
+	})
+}
+
+func (t *TicketController) listTicketSortedBy(c *gin.Context) {
+	var userRole model.UserRole
+	err := t.ParseRequestBody(c, &userRole)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "FAILED",
+			"message": err,
+		})
+		return
+	}
+
+	orderBy := c.Param("orderBy")
+	field := c.Param("field")
+	print, err := t.ucTicket.ListTicketSortedBy(&userRole, orderBy, field)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"status":  "FAILED",
+				"message": "Error ticket not found",
+			})
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  "FAILED",
+			"message": err,
+		})
+		return
+
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "SUCCESS",
+		"message": print,
+	})
+}
+
+// func (t *TicketController) getTicketSummaryByDate(c *gin.Context) { // BELUM BISA
+// 	statusId := c.Param("statusid")
+// 	convStatusId, err := strconv.Atoi(statusId)
 // 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			t.Failed(c, utils.DataNotFoundError())
-// 			return
-// 		}
-// 		t.Failed(c, err)
+// 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+// 			"status":  "FAILED",
+// 			"message": "Error converting status id",
+// 		})
 // 		return
 // 	}
-// 	t.Success(c, print)
+
+// 	param1 := c.Param("startdate") + " 23:59:59 +0700 WIB"
+// 	param2 := c.Param("enddate") + " 23:59:59 +0700 WIB"
+// 	// starDate, err := time.Parse("2006-01-02 15:04:05 -0700 MST", param1)
+// 	// if err != nil {
+// 	// 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+// 	// 		"status":  "FAILED",
+// 	// 		"message": "Error converting date",
+// 	// 	})
+// 	// 	return
+// 	// }
+
+// 	// endDate, err := time.Parse("2006-01-02 15:04:05 -0700 MST", param2)
+// 	// if err != nil {
+// 	// 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+// 	// 		"status":  "FAILED",
+// 	// 		"message": "Error converting date",
+// 	// 	})
+// 	// 	return
+// 	// }
+
+// 	var userRole model.UserRole
+// 	err = t.ParseRequestBody(c, &userRole)
+// 	if err != nil {
+// 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+// 			"status":  "FAILED",
+// 			"message": err,
+// 		})
+// 		return
+// 	}
+
+// 	print, err := t.ucTicket.GetSummaryTicketByDate(convStatusId, &userRole, param1, param2)
+// 	if err != nil {
+// 		if errors.Is(err, gorm.ErrRecordNotFound) {
+// 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+// 				"status":  "FAILED",
+// 				"message": "Error ticket not found",
+// 			})
+// 			return
+// 		}
+// 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+// 			"status":  "FAILED",
+// 			"message": err,
+// 		})
+// 		return
+
+// 	}
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"status":  "SUCCESS",
+// 		"message": print,
+// 	})
 // }
 
 func (t *TicketController) updatePIC(c *gin.Context) {
@@ -277,7 +358,7 @@ func (t *TicketController) updatePIC(c *gin.Context) {
 func (t *TicketController) updateStatus(c *gin.Context) {
 	var updateInput struct {
 		TicketId string `json:"ticketId"`
-		StatusId    int    `json:"statusId"`
+		StatusId int    `json:"statusId"`
 	}
 
 	if err := c.BindJSON(&updateInput); err != nil {
@@ -314,21 +395,16 @@ func NewTicketController(router *gin.Engine, ucTicket usecase.TicketUseCase) *Ti
 
 	protectedGroup.POST("", controller.createTicket)
 	protectedGroup.GET("/list", controller.ListTicketByUserId)
-	protectedGroup.GET("/list/department/:id", controller.ListTicketByDepartmentId)
+	protectedGroup.GET("/department/:id", controller.ListTicketByDepartmentId)
 
-	// protectedGroup.GET("/listByDate/:orderBy", controller.listTicketByDate)
-	// protectedGroup.GET("/ticketListByDate/:dateTime", controller.tiketListByDate)
-	// protectedGroup.GET("/listByPriority/:priority", controller.listTicketByPriority)
-	// protectedGroup.GET("/listByCategory/:category", controller.listTicketByCategory)
+	protectedGroup.GET("/:id", controller.getTicketById)
+	protectedGroup.POST("/sort", controller.listTicketSortedBy)
+	protectedGroup.GET("/summary/:statusid", controller.getTicketSummary)
+	// protectedGroup.GET("/summarydate/:statusid/:startdate/:enddate", controller.getTicketSummaryByDate)
 
 	protectedGroup.PUT("/update-pic", controller.updatePIC)
 	protectedGroup.PUT("/update-status", controller.updateStatus)
+	protectedGroup.POST("/listp/:orderBy/:field", controller.listTicketSortedBy)
 
-	// protectedGroup.GET("/filterByDate/:startDate/:endDate", controller.filterTicketByDate)
-
-	protectedGroup.GET("/:id", controller.getTicketById)
-	// protectedGroup.GET("/getTotalOpen", controller.getTotalOpenTicket)
-	// protectedGroup.GET("/getTotalClose", controller.getTotalCloseTicket)
-	// protectedGroup.GET("/getTotalProgress", controller.getTotalOnProgressTicket)
 	return &controller
 }
